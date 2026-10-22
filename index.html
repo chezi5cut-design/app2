@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FitPulse - Compteur de Pas Modern</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            cyan: '#06b6d4',
+                            purple: '#a855f7',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation;
+        }
+        /* Custom Glowing effects */
+        .glow-green {
+            box-shadow: 0 0 25px -5px rgba(34, 197, 94, 0.3);
+        }
+        .glow-cyan {
+            box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.3);
+        }
+        /* Glassmorphic card */
+        .glass-card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-card-hover:hover {
+            background: rgba(30, 41, 59, 0.8);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+        /* Smooth progress circle */
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.35s ease-in-out, stroke 0.3s;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+        /* Pulsing animation for tracking indicator */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 0.4; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .pulse-active {
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col justify-between max-w-md mx-auto relative overflow-x-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-20">
+
+    <!-- Header -->
+    <header class="p-5 flex justify-between items-center z-10">
+        <div class="flex items-center space-x-2">
+            <div class="bg-gradient-to-tr from-brand-500 to-brand-cyan p-2.5 rounded-2xl shadow-lg shadow-brand-500/20">
+                <i data-lucide="footprints" class="w-6 h-6 text-slate-950 stroke-[2.5]"></i>
+            </div>
+            <div>
+                <h1 class="font-extrabold text-xl tracking-tight text-white flex items-center gap-1">
+                    FitPulse <span class="text-xs px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-500 font-semibold border border-brand-500/20">PRO</span>
+                </h1>
+                <p class="text-xs text-slate-400" id="current-date">Aujourd'hui</p>
+            </div>
+        </div>
+        <button id="btn-open-settings" class="p-2.5 rounded-2xl glass-card text-slate-300 hover:text-white transition-all active:scale-95" aria-label="Paramètres">
+            <i data-lucide="settings" class="w-5 h-5"></i>
+        </button>
+    </header>
+
+    <!-- Content Tabs -->
+    <main class="px-5 flex-1 flex flex-col space-y-6">
+
+        <!-- TAB 1: MAIN COUNTER -->
+        <section id="tab-dashboard" class="space-y-6 flex flex-col items-center">
+            
+            <!-- Main Circular Step Counter -->
+            <div class="relative w-72 h-72 flex items-center justify-center my-2">
+                <!-- SVG Progress Ring -->
+                <svg class="w-full h-full" viewBox="0 0 120 120">
+                    <defs>
+                        <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#22c55e" />
+                            <stop offset="100%" stop-color="#06b6d4" />
+                        </linearGradient>
+                    </defs>
+                    <!-- Background Circle -->
+                    <circle class="text-slate-800/80" stroke-width="8" stroke="currentColor" fill="transparent" r="50" cx="60" cy="60" />
+                    <!-- Progress Circle -->
+                    <circle id="progress-circle" class="progress-ring__circle" stroke-width="8" stroke-dasharray="314.159" stroke-dashoffset="314.159" stroke-linecap="round" stroke="url(#gradient)" fill="transparent" r="50" cx="60" cy="60" />
+                </svg>
+
+                <!-- Center Display Text -->
+                <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <div id="tracking-status-badge" class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/50 mb-2 text-xs font-medium text-slate-400">
+                        <span id="tracking-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+                        <span id="tracking-status-text">Inactif</span>
+                    </div>
+
+                    <span id="step-count" class="text-5xl font-extrabold tracking-tight text-white my-1 font-mono">0</span>
+                    <span class="text-xs uppercase tracking-widest text-slate-400 font-semibold">pas effectués</span>
+
+                    <!-- Goal Indicator below number -->
+                    <div class="mt-2 text-xs text-slate-400 flex items-center gap-1">
+                        <span>Objectif:</span>
+                        <span id="goal-display" class="font-bold text-slate-200">10 000</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Bar (3 Cards) -->
+            <div class="grid grid-cols-3 gap-3 w-full">
+                <!-- Calories -->
+                <div class="glass-card rounded-2xl p-3.5 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                    <div class="p-2 rounded-xl bg-orange-500/10 text-orange-400 mb-1.5">
+                        <i data-lucide="flame" class="w-5 h-5"></i>
+                    </div>
+                    <span id="stat-calories" class="text-lg font-bold text-white font-mono">0</span>
+                    <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">kcal</span>
+                </div>
+
+                <!-- Distance -->
+                <div class="glass-card rounded-2xl p-3.5 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                    <div class="p-2 rounded-xl bg-cyan-500/10 text-brand-cyan mb-1.5">
+                        <i data-lucide="map-pin" class="w-5 h-5"></i>
+                    </div>
+                    <span id="stat-distance" class="text-lg font-bold text-white font-mono">0.00</span>
+                    <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">km</span>
+                </div>
+
+                <!-- Active Time -->
+                <div class="glass-card rounded-2xl p-3.5 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                    <div class="p-2 rounded-xl bg-purple-500/10 text-brand-purple mb-1.5">
+                        <i data-lucide="timer" class="w-5 h-5"></i>
+                    </div>
+                    <span id="stat-time" class="text-lg font-bold text-white font-mono">0m</span>
+                    <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">temps</span>
+                </div>
+            </div>
+
+            <!-- Tracking Toggle & Quick Add Buttons -->
+            <div class="w-full space-y-3 pt-2">
+                <button id="btn-toggle-tracking" class="w-full py-4 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-cyan text-slate-950 font-bold text-base flex items-center justify-center gap-2 shadow-lg shadow-brand-500/25 active:scale-[0.98] transition-all">
+                    <i data-lucide="play" class="w-5 h-5 fill-slate-950" id="btn-tracking-icon"></i>
+                    <span id="btn-tracking-text">Démarrer le suivi</span>
+                </button>
+
+                <!-- PC / Test Mode Controls -->
+                <div class="glass-card rounded-2xl p-3 flex items-center justify-between text-xs text-slate-300">
+                    <span class="flex items-center gap-1.5 text-slate-400">
+                        <i data-lucide="bug" class="w-4 h-4 text-slate-500"></i> Mode Test :
+                    </span>
+                    <div class="flex gap-2">
+                        <button id="btn-sim-walk" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition active:scale-95 flex items-center gap-1">
+                            <i data-lucide="footprints" class="w-3.5 h-3.5"></i> +10 Pas
+                        </button>
+                        <button id="btn-sim-walk-100" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition active:scale-95 flex items-center gap-1">
+                            <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i> +500 Pas
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: HISTORY -->
+        <section id="tab-history" class="space-y-5 hidden">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i data-lucide="bar-chart-3" class="w-5 h-5 text-brand-500"></i> Activité récente
+                </h2>
+                <span class="text-xs text-slate-400">Derniers 7 jours</span>
+            </div>
+
+            <!-- Chart Card -->
+            <div class="glass-card rounded-2xl p-4">
+                <div class="h-48 w-full">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Daily Logs List -->
+            <div class="space-y-2">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 px-1">Détails de la semaine</h3>
+                <div id="history-list" class="space-y-2">
+                    <!-- Dynamic rendering -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-slate-900/90 backdrop-blur-md border-t border-slate-800 px-6 py-2.5 flex justify-around items-center z-20">
+        <button id="nav-btn-dashboard" class="flex flex-col items-center gap-1 text-brand-500 transition-colors">
+            <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium">Accueil</span>
+        </button>
+        <button id="nav-btn-history" class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors">
+            <i data-lucide="history" class="w-5 h-5"></i>
+            <span class="text-[10px] font-medium">Historique</span>
+        </button>
+    </nav>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 pointer-events-none transition-all duration-300">
+        <div class="glass-card bg-slate-900 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 border-t border-slate-800 space-y-6 transform translate-y-full sm:translate-y-0 transition-transform duration-300" id="settings-content">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-5 h-5 text-brand-cyan"></i> Réglages & Profil
+                </h3>
+                <button id="btn-close-settings" class="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Step Goal -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Objectif Quotidien (pas)</label>
+                    <input type="number" id="input-goal" step="500" min="1000" max="50000" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-500 font-mono font-bold">
+                </div>
+
+                <!-- Step Length -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Longueur de foulée moyenne (cm)</label>
+                    <input type="number" id="input-stride" step="1" min="40" max="120" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-500 font-mono font-bold">
+                </div>
+
+                <!-- Weight -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Poids (kg) - pour calcul calories</label>
+                    <input type="number" id="input-weight" step="1" min="30" max="200" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-500 font-mono font-bold">
+                </div>
+            </div>
+
+            <div class="pt-2 flex gap-3">
+                <button id="btn-reset-today" class="w-1/2 py-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 font-semibold text-xs transition">
+                    Réinitialiser aujourd'hui
+                </button>
+                <button id="btn-save-settings" class="w-1/2 py-3 rounded-xl bg-brand-500 text-slate-950 font-bold text-xs hover:bg-brand-600 transition shadow-lg shadow-brand-500/20">
+                    Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // State Management
+        const state = {
+            steps: 0,
+            goal: 10000,
+            strideCm: 75, // Average stride length in cm
+            weightKg: 70, // Average body weight for calorie estimation
+            isTracking: false,
+            activeSeconds: 0,
+            timerInterval: null,
+            lastStepTime: 0,
+            goalReachedToday: false,
+            history: {} // Format: { 'YYYY-MM-DD': stepsCount }
+        };
+
+        // DOM Elements
+        const elements = {
+            stepCount: document.getElementById('step-count'),
+            goalDisplay: document.getElementById('goal-display'),
+            statCalories: document.getElementById('stat-calories'),
+            statDistance: document.getElementById('stat-distance'),
+            statTime: document.getElementById('stat-time'),
+            progressCircle: document.getElementById('progress-circle'),
+            btnToggleTracking: document.getElementById('btn-toggle-tracking'),
+            btnTrackingText: document.getElementById('btn-tracking-text'),
+            btnTrackingIcon: document.getElementById('btn-tracking-icon'),
+            trackingStatusBadge: document.getElementById('tracking-status-badge'),
+            trackingStatusText: document.getElementById('tracking-status-text'),
+            trackingDot: document.getElementById('tracking-dot'),
+            currentDate: document.getElementById('current-date'),
+            // Navigation
+            tabDashboard: document.getElementById('tab-dashboard'),
+            tabHistory: document.getElementById('tab-history'),
+            navBtnDashboard: document.getElementById('nav-btn-dashboard'),
+            navBtnHistory: document.getElementById('nav-btn-history'),
+            // Settings Modal
+            settingsModal: document.getElementById('settings-modal'),
+            settingsContent: document.getElementById('settings-content'),
+            btnOpenSettings: document.getElementById('btn-open-settings'),
+            btnCloseSettings: document.getElementById('btn-close-settings'),
+            btnSaveSettings: document.getElementById('btn-save-settings'),
+            btnResetToday: document.getElementById('btn-reset-today'),
+            inputGoal: document.getElementById('input-goal'),
+            inputStride: document.getElementById('input-stride'),
+            inputWeight: document.getElementById('input-weight'),
+            // Simulators
+            btnSimWalk: document.getElementById('btn-sim-walk'),
+            btnSimWalk100: document.getElementById('btn-sim-walk-100'),
+            // History
+            historyList: document.getElementById('history-list')
+        };
+
+        let historyChartInstance = null;
+
+        // Accelerometer detection variables
+        let lastX = null, lastY = null, lastZ = null;
+        const ACCEL_THRESHOLD = 11.5; // Acceleration magnitude threshold for a step
+        const MIN_STEP_INTERVAL = 300; // Minimum ms between steps to prevent false counts
+
+        // Initialization
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadState();
+            formatCurrentDate();
+            updateUI();
+            initChart();
+
+            // Event Listeners
+            elements.btnToggleTracking.addEventListener('click', toggleTracking);
+            elements.btnSimWalk.addEventListener('click', () => addSteps(10));
+            elements.btnSimWalk100.addEventListener('click', () => addSteps(500));
+
+            // Navigation
+            elements.navBtnDashboard.addEventListener('click', () => switchTab('dashboard'));
+            elements.navBtnHistory.addEventListener('click', () => switchTab('history'));
+
+            // Settings Modal
+            elements.btnOpenSettings.addEventListener('click', openSettings);
+            elements.btnCloseSettings.addEventListener('click', closeSettings);
+            elements.btnSaveSettings.addEventListener('click', saveSettings);
+            elements.btnResetToday.addEventListener('click', resetTodayData);
+        });
+
+        // Format Date string
+        function formatCurrentDate() {
+            const now = new Date();
+            const options = { weekday: 'long', day: 'numeric', month: 'long' };
+            elements.currentDate.textContent = now.toLocaleDateString('fr-FR', options);
+        }
+
+        // Get Today Key YYYY-MM-DD
+        function getTodayKey() {
+            const today = new Date();
+            return today.toISOString().split('T')[0];
+        }
+
+        // Load persisted state from LocalStorage
+        function loadState() {
+            const savedSettings = localStorage.getItem('fitpulse_settings');
+            if (savedSettings) {
+                const parsed = JSON.parse(savedSettings);
+                state.goal = parsed.goal || 10000;
+                state.strideCm = parsed.strideCm || 75;
+                state.weightKg = parsed.weightKg || 70;
+            }
+
+            const savedHistory = localStorage.getItem('fitpulse_history');
+            if (savedHistory) {
+                state.history = JSON.parse(savedHistory);
+            }
+
+            const todayKey = getTodayKey();
+            if (state.history[todayKey]) {
+                state.steps = state.history[todayKey].steps || 0;
+                state.activeSeconds = state.history[todayKey].activeSeconds || 0;
+            } else {
+                state.steps = 0;
+                state.activeSeconds = 0;
+                saveTodayData();
+            }
+
+            // Check if goal was already reached
+            state.goalReachedToday = state.steps >= state.goal;
+        }
+
+        // Save current day stats to state and LocalStorage
+        function saveTodayData() {
+            const todayKey = getTodayKey();
+            state.history[todayKey] = {
+                steps: state.steps,
+                activeSeconds: state.activeSeconds,
+                distanceKm: calculateDistance(),
+                calories: calculateCalories()
+            };
+            localStorage.setItem('fitpulse_history', JSON.stringify(state.history));
+        }
+
+        // Calculations
+        function calculateDistance() {
+            // Distance = steps * stride length in meters / 1000 -> km
+            return ((state.steps * state.strideCm) / 100000).toFixed(2);
+        }
+
+        function calculateCalories() {
+            // Approx: 0.04 kcal per step for average adult
+            const kcalPerStep = 0.04 * (state.weightKg / 70);
+            return Math.round(state.steps * kcalPerStep);
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            if (mins < 60) {
+                return `${mins}m`;
+            }
+            const hours = Math.floor(mins / 60);
+            const remMins = mins % 60;
+            return `${hours}h ${remMins}m`;
+        }
+
+        // Update UI Elements
+        function updateUI() {
+            // Steps & Goal Display
+            elements.stepCount.textContent = state.steps.toLocaleString('fr-FR');
+            elements.goalDisplay.textContent = state.goal.toLocaleString('fr-FR');
+
+            // Derived Stats
+            elements.statCalories.textContent = calculateCalories();
+            elements.statDistance.textContent = calculateDistance();
+            elements.statTime.textContent = formatTime(state.activeSeconds);
+
+            // Circular Progress Ring Calculations
+            const radius = 50;
+            const circumference = 2 * Math.PI * radius; // ~314.159
+            const percent = Math.min(state.steps / state.goal, 1);
+            const offset = circumference - (percent * circumference);
+            elements.progressCircle.style.strokeDashoffset = offset;
+
+            // Trigger Goal Confetti if newly reached
+            if (state.steps >= state.goal && !state.goalReachedToday) {
+                state.goalReachedToday = true;
+                triggerGoalCelebration();
+            }
+        }
+
+        // Add Steps Logic
+        function addSteps(count) {
+            state.steps += count;
+            saveTodayData();
+            updateUI();
+        }
+
+        // Confetti effect when goal is reached
+        function triggerGoalCelebration() {
+            confetti({
+                particleCount: 120,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#22c55e', '#06b6d4', '#a855f7', '#f59e0b']
+            });
+        }
+
+        // Toggle Motion Tracking
+        async function toggleTracking() {
+            if (state.isTracking) {
+                stopTracking();
+            } else {
+                startTracking();
+            }
+        }
+
+        function startTracking() {
+            // Request permissions for iOS 13+ if needed
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            bindMotionEvents();
+                        } else {
+                            alert("Permission refusée pour accéder aux capteurs de mouvement.");
+                        }
+                    })
+                    .catch(console.error);
+            } else if (window.DeviceMotionEvent) {
+                bindMotionEvents();
+            }
+
+            state.isTracking = true;
+            
+            // Timer for active time duration
+            state.timerInterval = setInterval(() => {
+                state.activeSeconds += 1;
+                elements.statTime.textContent = formatTime(state.activeSeconds);
+                saveTodayData();
+            }, 1000);
+
+            // Update Toggle Button UI
+            elements.btnTrackingText.textContent = "Pauser le suivi";
+            elements.btnTrackingIcon.setAttribute('data-lucide', 'pause');
+            elements.btnToggleTracking.classList.remove('from-brand-500', 'to-brand-cyan');
+            elements.btnToggleTracking.classList.add('from-amber-500', 'to-orange-500');
+
+            // Update Badge UI
+            elements.trackingStatusText.textContent = "Suivi en cours";
+            elements.trackingStatusText.classList.replace('text-slate-400', 'text-brand-500');
+            elements.trackingDot.classList.remove('bg-slate-500');
+            elements.trackingDot.classList.add('bg-brand-500', 'pulse-active');
+
+            lucide.createIcons();
+        }
+
+        function stopTracking() {
+            state.isTracking = false;
+            window.removeEventListener('devicemotion', handleMotion);
+            clearInterval(state.timerInterval);
+
+            // Update Toggle Button UI
+            elements.btnTrackingText.textContent = "Démarrer le suivi";
+            elements.btnTrackingIcon.setAttribute('data-lucide', 'play');
+            elements.btnToggleTracking.classList.remove('from-amber-500', 'to-orange-500');
+            elements.btnToggleTracking.classList.add('from-brand-500', 'to-brand-cyan');
+
+            // Update Badge UI
+            elements.trackingStatusText.textContent = "Inactif";
+            elements.trackingStatusText.classList.replace('text-brand-500', 'text-slate-400');
+            elements.trackingDot.classList.remove('bg-brand-500', 'pulse-active');
+            elements.trackingDot.classList.add('bg-slate-500');
+
+            lucide.createIcons();
+        }
+
+        function bindMotionEvents() {
+            window.addEventListener('devicemotion', handleMotion, false);
+        }
+
+        // Accelerometer Motion Event Handler
+        function handleMotion(event) {
+            if (!state.isTracking) return;
+
+            const accel = event.accelerationIncludingGravity;
+            if (!accel) return;
+
+            const now = Date.now();
+            const x = accel.x || 0;
+            const y = accel.y || 0;
+            const z = accel.z || 0;
+
+            if (lastX !== null) {
+                const deltaX = x - lastX;
+                const deltaY = y - lastY;
+                const deltaZ = z - lastZ;
+
+                // Calculate total acceleration magnitude change
+                const magnitude = Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+
+                if (magnitude > ACCEL_THRESHOLD && (now - state.lastStepTime) > MIN_STEP_INTERVAL) {
+                    state.lastStepTime = now;
+                    addSteps(1);
+                }
+            }
+
+            lastX = x;
+            lastY = y;
+            lastZ = z;
+        }
+
+        // Navigation Tabs Toggle
+        function switchTab(tabName) {
+            if (tabName === 'dashboard') {
+                elements.tabDashboard.classList.remove('hidden');
+                elements.tabHistory.classList.add('hidden');
+
+                elements.navBtnDashboard.classList.replace('text-slate-400', 'text-brand-500');
+                elements.navBtnHistory.classList.replace('text-brand-500', 'text-slate-400');
+            } else {
+                elements.tabDashboard.classList.add('hidden');
+                elements.tabHistory.classList.remove('hidden');
+
+                elements.navBtnHistory.classList.replace('text-slate-400', 'text-brand-500');
+                elements.navBtnDashboard.classList.replace('text-brand-500', 'text-slate-400');
+
+                renderHistory();
+            }
+        }
+
+        // Settings Modal Controls
+        function openSettings() {
+            elements.inputGoal.value = state.goal;
+            elements.inputStride.value = state.strideCm;
+            elements.inputWeight.value = state.weightKg;
+
+            elements.settingsModal.classList.remove('opacity-0', 'pointer-events-none');
+            elements.settingsContent.classList.remove('translate-y-full');
+        }
+
+        function closeSettings() {
+            elements.settingsModal.classList.add('opacity-0', 'pointer-events-none');
+            elements.settingsContent.classList.add('translate-y-full');
+        }
+
+        function saveSettings() {
+            state.goal = parseInt(elements.inputGoal.value) || 10000;
+            state.strideCm = parseInt(elements.inputStride.value) || 75;
+            state.weightKg = parseInt(elements.inputWeight.value) || 70;
+
+            localStorage.setItem('fitpulse_settings', JSON.stringify({
+                goal: state.goal,
+                strideCm: state.strideCm,
+                weightKg: state.weightKg
+            }));
+
+            // Reset goal reached flag if user increases goal
+            if (state.steps < state.goal) {
+                state.goalReachedToday = false;
+            }
+
+            updateUI();
+            closeSettings();
+        }
+
+        function resetTodayData() {
+            if (confirm("Voulez-vous vraiment réinitialiser les pas d'aujourd'hui ?")) {
+                state.steps = 0;
+                state.activeSeconds = 0;
+                state.goalReachedToday = false;
+                saveTodayData();
+                updateUI();
+                closeSettings();
+            }
+        }
+
+        // Render History List & Chart
+        function renderHistory() {
+            const historyListEl = elements.historyList;
+            historyListEl.innerHTML = '';
+
+            // Generate last 7 days keys
+            const days = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                days.push(d.toISOString().split('T')[0]);
+            }
+
+            const chartLabels = [];
+            const chartData = [];
+
+            days.forEach(dayKey => {
+                const data = state.history[dayKey] || { steps: 0, distanceKm: 0, calories: 0 };
+                const dateObj = new Date(dayKey);
+                const dayName = dateObj.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
+
+                chartLabels.push(dayName);
+                chartData.push(data.steps);
+
+                // Create Card element
+                const isToday = dayKey === getTodayKey();
+                const card = document.createElement('div');
+                card.className = `glass-card rounded-xl p-3.5 flex justify-between items-center ${isToday ? 'border-brand-500/40 bg-brand-500/5' : ''}`;
+                
+                const percent = Math.min(Math.round((data.steps / state.goal) * 100), 100);
+
+                card.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-bold text-xs ${data.steps >= state.goal ? 'text-brand-500 border border-brand-500/30' : 'text-slate-400'}">
+                            ${percent}%
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-white capitalize">${isToday ? "Aujourd'hui" : dayName}</h4>
+                            <p class="text-xs text-slate-400">${data.distanceKm || 0} km • ${data.calories || 0} kcal</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-base font-bold text-white font-mono">${(data.steps || 0).toLocaleString('fr-FR')}</span>
+                        <span class="block text-[10px] text-slate-500">pas</span>
+                    </div>
+                `;
+
+                historyListEl.appendChild(card);
+            });
+
+            updateChart(chartLabels, chartData);
+        }
+
+        // Initialize Chart.js
+        function initChart() {
+            const ctx = document.getElementById('historyChart').getContext('2d');
+            historyChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Pas',
+                        data: [],
+                        backgroundColor: 'rgba(34, 197, 94, 0.6)',
+                        borderColor: '#22c55e',
+                        borderWidth: 2,
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8', font: { family: 'Inter', size: 10 } }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8', font: { family: 'Inter', size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(labels, data) {
+            if (!historyChartInstance) return;
+            historyChartInstance.data.labels = labels;
+            historyChartInstance.data.datasets[0].data = data;
+            
+            // Highlight bar color if reached goal
+            historyChartInstance.data.datasets[0].backgroundColor = data.map(v => v >= state.goal ? 'rgba(34, 197, 94, 0.8)' : 'rgba(6, 182, 212, 0.4)');
+            historyChartInstance.data.datasets[0].borderColor = data.map(v => v >= state.goal ? '#22c55e' : '#06b6d4');
+            
+            historyChartInstance.update();
+        }
+    </script>
+</body>
+</html>
